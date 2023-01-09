@@ -1,0 +1,227 @@
+from picamera import PiCamera
+from time import sleep
+from PIL import Image
+import time
+
+camera = PiCamera()
+camera.rotation = 180
+
+# minimum resolution is 32 x 32. resolution (w x h) must be a multiple of (32 x 16)
+camera_width = 64
+camera_height = 32
+camera.resolution = (camera_width, camera_height)
+
+current_file = '/home/pi/python_projects/project_1'
+
+#higher values of img_comp_res soften the image difference scan, small differences will not be seen
+img_comp_res = 40
+
+name = input('What is your name? ')
+print('Hello ', name, '. Please choose between the followin modes on how you want to use the camera')
+print("type:")
+
+modes={
+	1:"film",
+	2:"pictures",
+	3:"tracking",
+	4:"shape recognition",
+	5:"info about modes"
+}
+
+total_modes = len(modes)
+
+for i in range(total_modes):
+	print('[', i+1, ']', modes[i+1])
+
+valid_mode = False
+
+while (valid_mode == False):
+	try:
+		mode = int(input('Please choose your option: '))
+		for selection in range(total_modes):
+			if mode == selection+1:
+				valid_mode = True
+				break
+			if mode > total_modes or mode <1:
+				print('Please select a valid mode')
+				break
+	except:
+		print('Error: Please enter a numerical value from 1 to ', total_modes)
+
+print('You have selected the mode [', mode, ']', modes[mode])
+
+if mode == 1:
+	print('Would you like to record or to only display the camera?')
+
+	i = True
+	while (i == True):
+		selection = input("Enter 'rec' for recording or 'disp' for direct display: ")
+
+		if selection == "rec":
+			camera.start_preview()
+			sleep(2)
+			print('Start recording for 5sec')
+			camera.start_recording(current_file + '/videos_rec/video.h264')
+			sleep(5)
+			camera.stop_recording()
+			camera.stop_preview()
+			i = False
+
+		elif selection == "disp":
+			print('Start camera display for 5sec')
+			camera.start_preview()
+			sleep(5)
+			camera.stop_preview()
+			i = False
+
+		else:
+			print('Error. Please select one of the following options.')
+
+if mode == 2:
+	print('Enter [1] to take a picture or [2] to exit:')
+	i = True
+	while (i == True):
+		try:
+			selection = int(input('Selection: '))
+			i = False
+		except:
+			print('Please enter [1] or [2]')
+
+	if selection == 1:
+		print('The picture will be taken after 2sec')
+		camera.start_preview()
+		sleep(2)
+		camera.capture(current_file + '/pictures/image.jpg')
+		camera.stop_preview()
+
+	elif selection == 2:
+		print('Exit picture mode')
+
+	else:
+		print('Please choose one of the following options')
+		i = True
+
+if mode == 3 or mode == 4:
+	camera.start_preview()
+	sleep(2)
+	t_end = time.time() + 10
+
+	while time.time() <= t_end:
+		i = True
+		while(i == True):
+			for a in range(2):
+				camera.capture(current_file + '/pictures/image' + str(a) + '.jpg', format='jpeg', use_video_port=True)
+				sleep(0.05)
+
+#			camera.stop_preview()
+
+# From two pictures: will compare them pixels by pixels
+# Each pixels have r, g, b values but they will be summed to simplify comparaison
+
+			two_convert_img = [[], []]
+			i = 0
+			for a in range(2):
+				image = Image.open(current_file + '/pictures/image' + str(a) + '.jpg')
+				image_data = image.getdata()
+				image_pixel_list = list(image_data)
+
+				convert_img = []
+				count = 0
+
+				for pix_yx in range(camera_height * camera_width):
+					pix = image_pixel_list[pix_yx]
+					sum_rgb = sum(pix)
+					convert_img.append(sum_rgb)
+#					count += 1
+				two_convert_img[i] = convert_img
+				i += 1
+
+#Checking if pixels are properly stored since an image (64x64) is 4096 pixels
+
+
+#			input('Type anything to get image 1 processed data: ')
+#			print('Pixels of image1')
+#			print(two_convert_img[0])
+#			print('num elements: ', len(two_convert_img[0]))
+#			input('Type anything to get image 2 processed data: ')
+#			print('--------------')
+#			print('Pixels of image2')
+#			print(two_convert_img[1])
+#			print('num elements: ', len(two_convert_img[1]))
+#			print('--------------')
+#			print(count)
+			i = False
+
+		compared_img = []
+		center_tracking = 0
+		center_tracking_divider = 0
+		i = 0
+		for element in range(camera_height * camera_width):
+			element_img1 = two_convert_img[0][element]
+			element_img2 = two_convert_img[1][element] 
+
+			if element_img1 > element_img2 + img_comp_res or element_img1 < element_img2 - img_comp_res:
+				compared_img.append((255, 0, 0))
+				center_tracking += element
+				center_tracking_divider += 1
+
+			else:
+				compared_img.append((0, 0, 0))
+
+#			if element == 0:
+#				for border in [0, 1]:
+#					compared_img[element+border] = (0, 0, 255)
+#					print(border)
+
+#			elif element == camera_width * camera_height - 1:
+#				for border in [-1, 0]:
+#					compared_img[i+border] = (0, 0, 225)
+#					print('2')
+
+#			elif isinstance(element / camera_width, int) == True:
+#				for border in [-2, -1, 0, 1]:
+#					compared_img[element+border] = (0, 0, 255)
+#					print('3')
+
+			i += 1
+
+		try:
+			center = center_tracking / center_tracking_divider
+			int_center = int(round(center))
+			for center_cross in [-2, -1, 0, 1, 2, -camera_width, 2*(-camera_width), camera_width, 2*camera_width]:
+				compared_img[center_cross + int_center] = (0, 255, 0)
+
+		except:
+			fill = 1
+
+#		print('Pixels in the overlay: ', len(compared_img))
+
+#		print(compared_img)
+
+#		test_img = []
+#		for element in compared_img:
+#			if element == 1:
+#				test_img.append((255, 0, 0))
+#			if element == 0:
+#				test_img.append((0, 0, 0))
+
+#		print(test_img)
+
+		new_img = Image.new(image.mode, image.size)
+		new_img.putdata(compared_img)
+#		new_img.save(current_file + '/test.jpg')
+#		new_test_img = Image.open(current_file + '/test.jpg')
+
+		try:
+			camera.remove_overlay(o)
+		except:
+			fill = 1
+
+# There is a pixel shift in the overlay, to remove the problem a no detection border (left and right only)  of 2 pixels is added
+
+		o = camera.add_overlay(new_img.tobytes(), size=(camera_width, camera_height), format='rgb', layer=3, alpha=128)
+#		new_test_img.show()
+#		sleep(5)
+
+	camera.remove_overlay(o)
+	camera.stop_preview()
